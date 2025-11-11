@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bellman-Ford Algorithm Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chosen Palette: Slate Dark (Background: bg-slate-900, Panels: bg-slate-800, Accent: cyan-500) -->
+    <!-- Application Structure Plan: A two-column SPA. Left column: controls for graph creation/editing and algorithm execution. Header contains navigation (Help, Learn, Dev) and export (Download). Right column: large canvas for interactive graph visualization (click-to-add/select, shift-drag-node-to-move, drag-node-to-node-to-add-edge) and tabbed panels below for step-by-step log and final results tables. This structure separates controls from visualization and global actions from context-specific ones. -->
+    <!-- Visualization & Content Choices: Report Info (User Req): Node-edge graph -> Goal: Visualize graph structure -> Viz/Method: HTML5 Canvas 2D API -> Interaction: Click canvas to add node, click node/edge to select, SHIFT-mousedown/drag node to move, mousedown/drag node onto another node to create edge. Arcs added ONLY for parallel DIRECTED edges. Undirected edges are straight and show weight once. Report Info (User Req): Bellman-Ford steps/results -> Goal: Show algorithm progression and shortest paths -> Viz/Method: Dynamic text panel for step-by-step log, HTML tables for final distances/paths. Report Info (User Req): Downloadable report -> Goal: Export simulation data -> Viz/Method: JS function to generate HTML-as-doc file, triggered from header button. Report Info (User Req): Learn video/text -> Goal: Educate user -> Viz/Method: Embed <iframe> in modal with text. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-btn.active {
+            border-bottom-color: #06b6d4; /* cyan-500 */
+            color: #06b6d4; /* cyan-500 */
+            font-weight: 600;
+        }
+        canvas {
+            cursor: crosshair;
+        }
+        canvas.grabbing {
+            cursor: grabbing;
+        }
+        canvas.grab {
+            cursor: grab;
+        }
+        canvas.pointer {
+            cursor: pointer;
+        }
+        canvas.edge-draw {
+            cursor: copy;
+        }
+        /* Dark theme form inputs */
+        input[type="number"], select {
+            background-color: #334155; /* slate-700 */
+            border-color: #475569; /* slate-600 */
+            color: #f1f5f9; /* slate-100 */
+        }
+        input[type="number"]:focus, select:focus {
+            --tw-ring-color: #06b6d4; /* cyan-500 */
+            border-color: #06b6d4; /* cyan-500 */
+        }
+        input[type="checkbox"] {
+            background-color: #334155; /* slate-700 */
+            border-color: #475569; /* slate-600 */
+        }
+        input[type="checkbox"]:checked {
+            background-color: #06b6d4; /* cyan-500 */
+            border-color: #06b6d4; /* cyan-500 */
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Not strictly needed here, but good practice
+            theme: {
+                extend: {
+                    colors: {
+                        'cyan': {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            200: '#a5f3fc',
+                            300: '#67e8f9',
+                            400: '#22d3ee',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            800: '#155e75',
+                            900: '#164e63',
+                            950: '#083344',
+                        },
+                        'slate': {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-300">
+
+    <div id="app" class="min-h-screen w-full">
+        
+        <header class="bg-slate-800 shadow-md">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <h1 class="text-2xl font-bold text-cyan-400">Bellman-Ford Algorithm Simulator</h1>
+                    <nav class="flex flex-wrap items-center gap-3">
+                    
+                        <button id="downloadBtn" disabled class="py-2 px-4 rounded-md text-sm font-medium bg-slate-700 text-purple-400 hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Download Report
+                        </button>
+                    </nav>
+                </div>
+            </div>
+        </header>
+        
+        <main class="container mx-auto p-4 sm:px-6 lg:px-8 mt-6">
+            <div class="flex flex-col lg:flex-row gap-6">
+                
+                <aside class="w-full lg:w-1/3 xl:w-1/4">
+                    <div class="sticky top-6 space-y-6">
+                        
+                        <div class="bg-slate-800 p-5 rounded-lg shadow-lg">
+                            <h2 class="text-xl font-semibold text-cyan-500 border-b border-slate-700 pb-2 mb-4">Graph Controls</h2>
+                            <p class="text-sm text-slate-400 mb-4">
+                                <strong>Click canvas:</strong> Add node.<br>
+                                <strong>Click node:</strong> Select node.<br>
+                                <strong>Click edge:</strong> Select edge.<br>
+                                <strong>Drag node-to-node:</strong> Add edge.<br>
+                                <strong>Shift-drag node:</strong> Move node.
+                            </p>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="weight" class="block text-sm font-medium text-slate-300">Edge Weight</label>
+                                    <input type="number" id="weight" value="1" class="mt-1 focus:ring-cyan-500 focus:border-cyan-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                                </div>
+                                
+                                <div class="flex items-center">
+                                    <input id="undirected" type="checkbox" class="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300 rounded">
+                                    <label for="undirected" class="ml-2 block text-sm text-slate-200">Undirected Edge</label>
+                                </div>
+                                
+                                <button id="deleteNodeBtn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-red-500">
+                                    Delete Selected Node
+                                </button>
+                                
+                                <button id="deleteEdgeBtn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-orange-500">
+                                    Delete Selected Edge
+                                </button>
+
+                                <button id="clearGraphBtn" class="w-full flex justify-center py-2 px-4 border border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-500">
+                                    Clear Graph
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-800 p-5 rounded-lg shadow-lg">
+                            <h2 class="text-xl font-semibold text-cyan-500 border-b border-slate-700 pb-2 mb-4">Algorithm Controls</h2>
+                            <p class="text-sm text-slate-400 mb-4">Select a source node and run the algorithm step-by-step or all at once.</p>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="sourceNode" class="block text-sm font-medium text-slate-300">Source Node</label>
+                                    <select id="sourceNode" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm rounded-md"></select>
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button id="initBtn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-blue-500">
+                                        Initialize
+                                    </button>
+                                    <button id="nextStepBtn" disabled class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        Next Step
+                                    </button>
+                                </div>
+                                
+                                <button id="runBtn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-green-500">
+                                    Run (Complete)
+                                </button>
+
+                                <button id="resetBtn" class="w-full flex justify-center py-2 px-4 border border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-500">
+                                    Reset Algorithm
+                                </button>
+                                
+                            </div>
+                        </div>
+
+                    </div>
+                </aside>
+
+                <section class="w-full lg:w-2/3 xl:w-3/4">
+                    <div class="bg-slate-800 p-2 rounded-lg shadow-lg">
+                        <canvas id="graphCanvas" class="w-full h-[500px] rounded-md border border-slate-700 bg-slate-800"></canvas>
+                    </div>
+
+                    <div class="bg-slate-800 p-5 rounded-lg shadow-lg mt-6">
+                        <div class="border-b border-slate-700">
+                            <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                                <button id="tab-status" class="tab-btn active whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-500">
+                                    Algorithm Status
+                                </button>
+                                <button id="tab-results" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-500">
+                                    Final Results
+                                </button>
+                            </nav>
+                        </div>
+                        
+                        <div id="content-status" class="tab-content active mt-4">
+                            <h3 class="text-lg font-medium text-slate-200">Step-by-Step Log</h3>
+                            <p class="text-sm text-slate-400 mb-3">Follow the algorithm's progress here. Click 'Initialize' to begin.</p>
+                            <div id="statusLog" class="h-64 overflow-y-auto bg-slate-900 p-3 rounded-md border border-slate-700 font-mono text-sm">
+                                <p class="text-slate-500">Waiting for algorithm to start...</p>
+                            </div>
+                        </div>
+
+                        <div id="content-results" class="tab-content mt-4">
+                            <h3 class="text-lg font-medium text-slate-200">Shortest Path Results</h3>
+                            <p class="text-sm text-slate-400 mb-3">Results will appear here after running the algorithm. Hover over a row to highlight the path on the canvas.</p>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-slate-700">
+                                    <thead class="bg-slate-700">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Node</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Distance</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Path</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsTableBody" class="bg-slate-800 divide-y divide-slate-700">
+                                        <tr>
+                                            <td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center">Run the algorithm to see results.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modalOverlay" class="hidden fixed inset-0 bg-black bg-opacity-75 z-40 transition-opacity"></div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-slate-800 p-6 rounded-lg shadow-2xl z-50 border border-cyan-500">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-cyan-400">How to Use the Simulator</h2>
+            <button class="modal-close-btn text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
+        </div>
+        <div class="text-slate-300 space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+            <p><strong>Add Node:</strong> Click anywhere on the blank canvas.</p>
+            <p><strong>Select/Deselect Node:</strong> Click directly on a node. A selected node has an amber border.</p>
+            <p><strong>Select/Deselect Edge:</strong> Click directly on an edge line or arc. A selected edge turns amber.</p>
+            <p><strong>Add Edge:</strong> Click and drag a node *on top of another node* and release. This will create an edge.</p>
+            <p><strong>Move Node:</strong> Hold down the <strong>Shift key</strong>, then click and drag a node to a new position.</p>
+            <p><strong>Set Edge Weight:</strong> Change the "Edge Weight" value in the control panel *before* creating the edge.</p>
+            <p><strong>Set Edge Direction:</strong> Check/uncheck the "Undirected Edge" box *before* creating the edge. (Default is directed).</p>
+            <p><strong>Delete Node:</strong> Select a node (click it), then click the "Delete Selected Node" button.</p>
+            <p><strong>Delete Edge:</strong> Select an edge (click it), then click the "Delete Selected Edge" button.</p>
+            <p><strong>Run Algorithm:</strong>
+                <ol class="list-decimal list-inside ml-4 space-y-1 mt-1">
+                    <li>Select your desired "Source Node" from the dropdown.</li>
+                    <li>Click <strong>"Initialize"</strong> to set up the algorithm.</li>
+                    <li>Click <strong>"Next Step"</strong> to walk through each edge relaxation.</li>
+                    <li>Click <strong>"Run (Complete)"</strong> to run the entire algorithm at once.</li>
+                </ol>
+            </p>
+            <p><strong>View Results:</strong> Click the "Final Results" tab to see the table of shortest paths. Hover over a row to highlight the path on the canvas.</p>
+            <p><strong>Download Report:</strong> After the algorithm has finished, click the "Download Report" button in the header to get a .doc file of the inputs, steps, and results.</p>
+        </div>
+    </div>
+
+    <!-- Learn Modal -->
+    <div id="learnModal" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-slate-800 p-6 rounded-lg shadow-2xl z-50 border border-cyan-500">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-cyan-400">Learn More & How It's Made</h2>
+            <button class="modal-close-btn text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
+        </div>
+        <div class="text-slate-300 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            
+            <div class="relative w-full rounded-lg overflow-hidden border border-slate-700" style="padding-top: 56.25%;"> <!-- 16:9 Aspect Ratio -->
+                <iframe class="absolute top-0 left-0 w-full h-full"
+                        src="C:\Users\arnav\Desktop\BellmanFord_algo_sim\y.mp4" 
+                        title="YouTube video player"
+                        frameborder="0" 
+                        allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allowfullscreen>
+                </iframe>
+            </div>
+
+            <h3 class="text-xl font-semibold text-cyan-500 mt-4 mb-2">What is the Bellman-Ford Algorithm?</h3>
+            <p>The Bellman-Ford algorithm is a single-source shortest path algorithm, meaning it computes the shortest paths from a single source node to all other nodes in a weighted graph. It is versatile because, unlike Dijkstra's algorithm, it can handle graphs with **negative-weight edges**.</p>
+            
+            <h3 class="text-xl font-semibold text-cyan-500 mt-2 mb-2">How It Works</h3>
+            <ol class="list-decimal list-inside space-y-2">
+                <li><strong>Initialization:</strong> Set the distance to the source node as 0 and all other nodes as infinity (∞). Set the predecessor of all nodes to null.</li>
+                <li><strong>Relaxation:</strong> Loop through all edges in the graph `V-1` times (where `V` is the number of nodes). For each edge (u, v) with weight `w`, if `distance(u) + w < distance(v)`, update `distance(v) = distance(u) + w` and set `predecessor(v) = u`.</li>
+                <li><strong>Negative Cycle Check:</strong> After `V-1` iterations, loop through all edges one more time. If any edge (u, v) can still be relaxed (i.e., `distance(u) + w < distance(v)`), it means the graph contains a **negative-weight cycle** that is reachable from the source.</li>
+            </ol>
+
+            <h3 class="text-xl font-semibold text-cyan-500 mt-4 mb-2">How This Simulator Is Made</h3>
+            <ul class="list-disc list-inside space-y-1">
+                <li><strong>Core Logic:</strong> Vanilla JavaScript (ES6+).</li>
+                <li><strong>Graphics:</strong> HTML5 Canvas 2D API for all graph rendering.</li>
+                <li><strong>Styling:</strong> Tailwind CSS for a responsive, utility-first UI.</li>
+                <li><strong>Architecture:</strong> A single-page application (SPA) in one HTML file. It uses a state-machine pattern to manage the algorithm's step-by-step execution.</li>
+            </ul>
+
+            <h3 class="text-xl font-semibold text-cyan-500 mt-4 mb-2">Learning Resources</h3>
+            <ul class="list-disc list-inside space-y-1">
+                <li><a href="https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm" target="_blank" class="text-cyan-400 hover:underline">Wikipedia - Bellman-Ford Algorithm</a></li>
+                <li><a href="https://www.geeksforgeeks.org/bellman-ford-algorithm-dp-23/" target="_blank" class="text-cyan-400 hover:underline">GeeksforGeeks - Bellman-Ford</a></li>
+                <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API" target="_blank" class="text-cyan-400 hover:underline">MDN - Canvas API</a></li>
+                <li><a href="https://tailwindcss.com" target="_blank" class="text-cyan-400 hover:underline">Tailwind CSS</a></li>
+            </ul>
+        </div>
+    </div>
+
+
+   
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('graphCanvas');
+            const ctx = canvas.getContext('2d');
+
+            const weightInput = document.getElementById('weight');
+            const undirectedCheckbox = document.getElementById('undirected');
+            const deleteNodeBtn = document.getElementById('deleteNodeBtn');
+            const deleteEdgeBtn = document.getElementById('deleteEdgeBtn');
+            const clearGraphBtn = document.getElementById('clearGraphBtn');
+            const sourceNodeSelect = document.getElementById('sourceNode');
+            const initBtn = document.getElementById('initBtn');
+            const nextStepBtn = document.getElementById('nextStepBtn');
+            const runBtn = document.getElementById('runBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+
+            const statusLog = document.getElementById('statusLog');
+            const resultsTableBody = document.getElementById('resultsTableBody');
+            
+            const tabs = [
+                { btn: document.getElementById('tab-status'), content: document.getElementById('content-status') },
+                { btn: document.getElementById('tab-results'), content: document.getElementById('content-results') }
+            ];
+
+            let nodes = [];
+            let edges = [];
+            let nextNodeId = 0;
+            let nextNodeChar = 'A';
+
+            let isDragging = false;
+            let draggedNode = null;
+            let dragOffsetX = 0;
+            let dragOffsetY = 0;
+            let dragOccurred = false;
+
+            let isDrawingEdge = false;
+            let edgeStartNode = null;
+            let edgeEndCoords = { x: 0, y: 0 };
+            
+            let selectedNodeId = null;
+            let selectedEdgeId = null;
+
+            let nodeRadius = 20;
+            const ARC_HEIGHT = 30;
+
+            let bellmanState = {
+                initialized: false,
+                distances: {},
+                predecessors: {},
+                sourceNodeId: null,
+                iteration: 0,
+                edgeIndex: 0,
+                phase: 'relax', 
+                animationQueue: [],
+                highlightedPath: null
+            };
+
+            function resizeCanvas() {
+                const parent = canvas.parentElement;
+                canvas.width = parent.clientWidth;
+                canvas.height = 500; 
+                drawGraph();
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            function drawGraph() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                const currentStep = bellmanState.animationQueue[0];
+                let highlightedEdge = currentStep ? currentStep.edge : null;
+                let relaxedEdge = currentStep ? currentStep.relaxed : null;
+
+                edges.forEach(edge => {
+                    const from = nodes.find(n => n.id === edge.from);
+                    const to = nodes.find(n => n.id === edge.to);
+                    if (!from || !to) return;
+                    
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#475569'; // slate-600
+                    ctx.lineWidth = 2;
+                    
+                    if (edge.id === selectedEdgeId) {
+                        ctx.strokeStyle = '#f59e0b'; // amber-500
+                        ctx.lineWidth = 4;
+                    }
+
+                    if (edge.id === highlightedEdge) {
+                        ctx.strokeStyle = '#3b82f6'; // blue-500
+                        ctx.lineWidth = 4;
+                    }
+                    if (edge.id === relaxedEdge) {
+                        ctx.strokeStyle = '#22c55e'; // green-500
+                        ctx.lineWidth = 4;
+                    }
+                    if (bellmanState.highlightedPath && bellmanState.highlightedPath.edges.includes(edge.id)) {
+                         ctx.strokeStyle = '#f59e0b'; // amber-500
+                         ctx.lineWidth = 4;
+                    }
+
+                    const {x: startX, y: startY} = from;
+                    const {x: endX, y: endY} = to;
+                    
+                    const dx = endX - startX;
+                    const dy = endY - startY;
+                    const angle = Math.atan2(dy, dx);
+                    
+                    const startOffset = getEdgeOffset(startX, startY, angle, 1);
+                    const endOffset = getEdgeOffset(endX, endY, angle, -1);
+                    
+                    let textAngle = angle;
+                    let textX, textY, arrowAngle;
+
+                    ctx.moveTo(startOffset.x, startOffset.y);
+
+                    if (edge.arc) {
+                        // *** UPDATED ARC LOGIC: Use arc value directly ***
+                        // Use a fixed arc height, but the sign of edge.arc determines direction
+                        const arcHeight = ARC_HEIGHT * Math.sign(edge.arc); 
+                        const normalAngle = angle - Math.PI / 2;
+                        
+                        const lineMidX = (startOffset.x + endOffset.x) / 2;
+                        const lineMidY = (startOffset.y + endOffset.y) / 2;
+                        
+                        const cx = lineMidX + Math.cos(normalAngle) * arcHeight;
+                        const cy = lineMidY + Math.sin(normalAngle) * arcHeight;
+                        
+                        ctx.quadraticCurveTo(cx, cy, endOffset.x, endOffset.y);
+                        
+                        // Midpoint of quadratic curve for text
+                        textX = 0.25 * startOffset.x + 0.5 * cx + 0.25 * endOffset.x;
+                        textY = 0.25 * startOffset.y + 0.5 * cy + 0.25 * endOffset.y;
+                        
+                        // Angle for text rotation
+                        textAngle = Math.atan2((endOffset.y - startOffset.y), (endOffset.x - startOffset.x));
+                        
+                        // Angle for arrowhead
+                        arrowAngle = Math.atan2(endOffset.y - cy, endOffset.x - cx);
+
+                    } else {
+                        ctx.lineTo(endOffset.x, endOffset.y);
+                        
+                        textX = (startOffset.x + endOffset.x) / 2;
+                        textY = (startOffset.y + endOffset.y) / 2;
+                        arrowAngle = angle;
+                    }
+                    
+                    ctx.stroke();
+
+                    // Draw text
+                    // For undirected edges, only draw text if from.id < to.id
+                    // For directed edges, always draw text
+                    if (edge.directed || edge.from < edge.to) {
+                        ctx.save();
+                        ctx.translate(textX, textY);
+                        ctx.rotate(textAngle);
+                        if (Math.abs(textAngle) > Math.PI / 2) {
+                            ctx.rotate(Math.PI);
+                            ctx.textAlign = "center";
+                            ctx.textBaseline = "top";
+                            ctx.fillStyle = '#94a3b8'; // slate-400
+                            ctx.font = '14px Inter';
+                            ctx.fillText(edge.weight, 0, 5);
+                        } else {
+                            ctx.textAlign = "center";
+                            ctx.textBaseline = "bottom";
+                            ctx.fillStyle = '#94a3b8'; // slate-400
+                            ctx.font = '14px Inter';
+                            ctx.fillText(edge.weight, 0, -5);
+                        }
+                        ctx.restore();
+                    }
+                    
+                    // Draw arrowhead
+                    if (edge.directed) {
+                        drawArrowhead(ctx, endOffset.x, endOffset.y, arrowAngle, ctx.strokeStyle);
+                    }
+                });
+                
+                // Draw temporary edge line
+                if (isDrawingEdge && edgeStartNode) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#e2e8f0'; // slate-200
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(edgeStartNode.x, edgeStartNode.y);
+                    ctx.lineTo(edgeEndCoords.x, edgeEndCoords.y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                nodes.forEach(node => {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                    
+                    let nodeColor = '#475569'; // slate-600
+                    if (node.id === bellmanState.sourceNodeId) {
+                        nodeColor = '#3b82f6'; // blue-500
+                    }
+                    if (bellmanState.highlightedPath && bellmanState.highlightedPath.nodes.includes(node.id)) {
+                        nodeColor = '#fcd34d'; // amber-300
+                    }
+
+                    ctx.fillStyle = nodeColor;
+                    ctx.fill();
+                    
+                    if (node.id === selectedNodeId) {
+                        ctx.strokeStyle = '#f59e0b'; // amber-500
+                        ctx.lineWidth = 4;
+                    } else {
+                        ctx.strokeStyle = '#06b6d4'; // cyan-500
+                        ctx.lineWidth = 2;
+                    }
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#f1f5f9'; // slate-100
+                    ctx.font = 'bold 16px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(node.name, node.x, node.y);
+                    
+                    const dist = bellmanState.distances[node.id];
+                    if (dist !== undefined) {
+                        let distText = dist === Infinity ? '∞' : (dist === -Infinity ? '-∞' : dist);
+                        ctx.fillStyle = '#22d3ee'; // cyan-400
+                        ctx.font = '14px Inter';
+                        ctx.fillText(distText, node.x, node.y + nodeRadius + 12);
+                    }
+                });
+            }
+            
+            function getEdgeOffset(x, y, angle, direction) {
+                return {
+                    x: x + Math.cos(angle) * direction * nodeRadius,
+                    y: y + Math.sin(angle) * direction * nodeRadius
+                };
+            }
+
+            function drawArrowhead(ctx, x, y, angle, color) {
+                const headlen = 10;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - headlen * Math.cos(angle - Math.PI / 6), y - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(x - headlen * Math.cos(angle + Math.PI / 6), y - headlen * Math.sin(angle + Math.PI / 6));
+                ctx.lineTo(x, y);
+                ctx.fillStyle = color;
+                ctx.fill();
+            }
+
+            function updateNodeDropdowns() {
+                sourceNodeSelect.innerHTML = '';
+                
+                const defaultOption = document.createElement('option');
+                defaultOption.value = "";
+                defaultOption.text = "Select source...";
+                sourceNodeSelect.add(defaultOption);
+
+                nodes.forEach(node => {
+                    const option3 = document.createElement('option');
+                    option3.value = node.id;
+                    option3.text = node.name;
+                    sourceNodeSelect.add(option3);
+                });
+            }
+            
+            function getMousePos(e) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+            
+            function getClickedNode(x, y) {
+                for (let i = nodes.length - 1; i >= 0; i--) {
+                    const node = nodes[i];
+                    const dx = x - node.x;
+                    const dy = y - node.y;
+                    if (dx * dx + dy * dy < nodeRadius * nodeRadius) {
+                        return node;
+                    }
+                }
+                return null;
+            }
+            
+            function getClickedEdge(x, y) {
+                const tolerance = 10; // Increased tolerance for arcs
+                let bestMatch = null;
+                let minDistance = Infinity;
+
+                for (const edge of edges) {
+                    const from = nodes.find(n => n.id === edge.from);
+                    const to = nodes.find(n => n.id === edge.to);
+                    if (!from || !to) continue;
+
+                    let distance;
+                    if (edge.arc) {
+                        // Check distance to quadratic curve
+                        const {x: startX, y: startY} = from;
+                        const {x: endX, y: endY} = to;
+                        const dx = endX - startX;
+                        const dy = endY - startY;
+                        const angle = Math.atan2(dy, dx);
+                        const arcHeight = ARC_HEIGHT * Math.sign(edge.arc);
+                        const normalAngle = angle - Math.PI / 2;
+                        const lineMidX = (startX + endX) / 2;
+                        const lineMidY = (startY + endY) / 2;
+                        const cx = lineMidX + Math.cos(normalAngle) * arcHeight;
+                        const cy = lineMidY + Math.sin(normalAngle) * arcHeight;
+                        
+                        // Approximate by checking 10 points on the curve
+                        for (let t = 0; t <= 1; t += 0.1) {
+                            const Bx = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * cx + t * t * endX;
+                            const By = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * cy + t * t * endY;
+                            const d = Math.sqrt((x - Bx) * (x - Bx) + (y - By) * (y - By));
+                            if (d < minDistance) {
+                                minDistance = d;
+                                bestMatch = edge;
+                            }
+                        }
+                        distance = minDistance;
+
+                    } else {
+                        // Check distance to straight line
+                        const { x: x1, y: y1 } = from;
+                        const { x: x2, y: y2 } = to;
+                        const lenSq = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+                        if (lenSq === 0) continue; 
+                        let t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / lenSq;
+                        t = Math.max(0, Math.min(1, t)); 
+                        const closestX = x1 + t * (x2 - x1);
+                        const closestY = y1 + t * (y2 - y1);
+                        const dx = x - closestX;
+                        const dy = y - closestY;
+                        distance = Math.sqrt(dx * dx + dy * dy);
+                    }
+
+                    if (distance < tolerance && distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = edge;
+                    }
+                }
+                
+                // Prioritize node clicks
+                if (getClickedNode(x,y)) return null;
+
+                return (minDistance < tolerance) ? bestMatch : null;
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                dragOccurred = false;
+                const { x, y } = getMousePos(e);
+                const clickedNode = getClickedNode(x, y);
+
+                if (clickedNode) {
+                    if (e.shiftKey) {
+                        // Moving node
+                        isDragging = true;
+                        draggedNode = clickedNode;
+                        dragOffsetX = x - draggedNode.x;
+                        dragOffsetY = y - draggedNode.y;
+                        canvas.classList.remove('crosshair');
+                        canvas.classList.add('grabbing');
+                    } else {
+                        // Drawing edge
+                        isDrawingEdge = true;
+                        edgeStartNode = clickedNode;
+                        edgeEndCoords = { x, y };
+                        canvas.classList.add('edge-draw');
+                    }
+                }
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                const { x, y } = getMousePos(e);
+
+                if (isDragging && draggedNode) {
+                    // Move node
+                    draggedNode.x = Math.min(Math.max(x - dragOffsetX, nodeRadius), canvas.width - nodeRadius);
+                    draggedNode.y = Math.min(Math.max(y - dragOffsetY, nodeRadius), canvas.height - nodeRadius);
+                    dragOccurred = true;
+                    drawGraph();
+                } else if (isDrawingEdge && edgeStartNode) {
+                    // Draw temp edge line
+                    edgeEndCoords.x = x;
+                    edgeEndCoords.y = y;
+                    dragOccurred = true;
+                    drawGraph();
+                } else {
+                    // Update cursor
+                    const onNode = !!getClickedNode(x, y);
+                    const onEdge = !!getClickedEdge(x, y);
+                    canvas.classList.toggle('grab', onNode && !isDragging && !isDrawingEdge);
+                    canvas.classList.toggle('pointer', !onNode && onEdge && !isDragging && !isDrawingEdge);
+                    canvas.classList.toggle('crosshair', !onNode && !onEdge && !isDragging && !isDrawingEdge);
+                    canvas.classList.toggle('edge-draw', isDrawingEdge);
+                }
+            });
+
+            canvas.addEventListener('mouseup', (e) => {
+                const { x, y } = getMousePos(e);
+
+                if (isDrawingEdge && edgeStartNode) {
+                    const targetNode = getClickedNode(x, y);
+                    
+                    if (targetNode && targetNode.id !== edgeStartNode.id) {
+                        // This is an edge creation drag
+                        const fromId = edgeStartNode.id;
+                        const toId = targetNode.id;
+                        const weight = parseInt(weightInput.value);
+                        
+                        if (isNaN(weight)) {
+                            logStatus("Please enter a valid weight.", "error");
+                        } else {
+                            const directed = !undirectedCheckbox.checked;
+                            const edgeId1 = edges.length > 0 ? Math.max(...edges.map(e => e.id)) + 1 : 0;
+                            
+                            // *** NEW "First Straight, Second Arced" LOGIC ***
+                            const newEdge = { id: edgeId1, from: fromId, to: toId, weight: weight, directed: directed, arc: 0 };
+                            
+                            if (directed) {
+                                // Check if a reverse *directed* edge already exists.
+                                const reverseDirectedEdgeExists = edges.some(e => e.from === toId && e.to === fromId && e.directed);
+                                
+                                if (reverseDirectedEdgeExists) {
+                                    // A reverse edge exists (it's straight). 
+                                    // So, this new edge must arc.
+                                    newEdge.arc = 1; // 1 for upward arc
+                                }
+                                // If no reverse edge exists, newEdge.arc remains 0 (straight).
+                            }
+                            
+                            edges.push(newEdge);
+
+                            if (!directed) {
+                                // Add the reverse edge for undirected, which is always straight
+                                const edgeId2 = edgeId1 + 1;
+                                const reverseUndirected = { id: edgeId2, from: toId, to: fromId, weight: weight, directed: directed, arc: 0 };
+                                edges.push(reverseUndirected);
+                            }
+                            // *** END NEW LOGIC ***
+                            
+                            logStatus(`Edge added: ${edgeStartNode.name} ${directed ? '→' : '↔'} ${targetNode.name} (Weight: ${weight})`, "info");
+                        }
+                        // This was an edge drag, so it counts as a drag
+                        dragOccurred = true;
+                    }
+                    
+                    isDrawingEdge = false;
+                    edgeStartNode = null;
+                    canvas.classList.remove('edge-draw');
+                }
+
+                if (isDragging) {
+                    isDragging = false;
+                    draggedNode = null;
+                    canvas.classList.remove('grabbing');
+                    // dragOccurred is already set from mousemove
+                }
+                
+                drawGraph();
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                isDragging = false;
+                draggedNode = null;
+                isDrawingEdge = false;
+                edgeStartNode = null;
+                canvas.classList.remove('grabbing', 'grab', 'edge-draw', 'pointer');
+                canvas.classList.add('crosshair');
+                drawGraph();
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (dragOccurred) {
+                    dragOccurred = false;
+                    return;
+                }
+
+                const { x, y } = getMousePos(e);
+                const clickedNode = getClickedNode(x, y);
+
+                if (clickedNode) { 
+                    selectedNodeId = (selectedNodeId === clickedNode.id) ? null : clickedNode.id;
+                    selectedEdgeId = null;
+                    logStatus(`Node ${clickedNode.name} ${selectedNodeId === null ? 'deselected' : 'selected'}.`, 'info');
+                    drawGraph();
+                    return;
+                }
+                
+                const clickedEdge = getClickedEdge(x, y);
+                if (clickedEdge) {
+                    selectedEdgeId = (selectedEdgeId === clickedEdge.id) ? null : clickedEdge.id;
+                    selectedNodeId = null;
+                    const fromNode = nodes.find(n => n.id === clickedEdge.from);
+                    const toNode = nodes.find(n => n.id === clickedEdge.to);
+                    logStatus(`Edge ${fromNode.name}→${toNode.name} ${selectedEdgeId === null ? 'deselected' : 'selected'}.`, 'info');
+                    drawGraph();
+                    return;
+                }
+
+                // If nothing was clicked
+                selectedNodeId = null; 
+                selectedEdgeId = null;
+                const newNode = {
+                    id: nextNodeId++,
+                    name: nextNodeChar,
+                    x: x,
+                    y: y
+                };
+                nodes.push(newNode);
+                nextNodeChar = String.fromCharCode(nextNodeChar.charCodeAt(0) + 1);
+                updateNodeDropdowns();
+                drawGraph();
+            });
+            
+            deleteNodeBtn.addEventListener('click', () => {
+                if (selectedNodeId === null) {
+                    logStatus("Please click a node to select it first.", "error");
+                    return;
+                }
+                
+                const nodeId = selectedNodeId;
+                const nodeToDelete = nodes.find(n => n.id === nodeId);
+                if (!nodeToDelete) { 
+                    logStatus("Error: Selected node not found.", "error");
+                    selectedNodeId = null;
+                    return;
+                }
+                
+                const nodeName = nodeToDelete.name;
+                
+                nodes = nodes.filter(n => n.id !== nodeId);
+                edges = edges.filter(e => e.from !== nodeId && e.to !== nodeId);
+                
+                selectedNodeId = null;
+                selectedEdgeId = null;
+                
+                resetAlgorithm();
+                
+                logStatus(`Node ${nodeName} and its edges have been deleted.`, "info");
+            });
+
+            deleteEdgeBtn.addEventListener('click', () => {
+                if (selectedEdgeId === null) {
+                    logStatus("Please click an edge to select it first.", "error");
+                    return;
+                }
+
+                const edgeToDelete = edges.find(e => e.id === selectedEdgeId);
+                if (!edgeToDelete) {
+                    logStatus("Error: Selected edge not found.", "error");
+                    selectedEdgeId = null;
+                    return;
+                }
+                
+                const fromNode = nodes.find(n => n.id === edgeToDelete.from);
+                const toNode = nodes.find(n => n.id === edgeToDelete.to);
+                
+                const fromId = edgeToDelete.from;
+                const toId = edgeToDelete.to;
+
+                // Remove the selected edge
+                edges = edges.filter(e => e.id !== selectedEdgeId);
+
+                // If it was undirected, remove its counterpart
+                if (!edgeToDelete.directed) {
+                    const otherEdge = edges.find(e => e.from === edgeToDelete.to && e.to === edgeToDelete.from && !e.directed && e.weight === edgeToDelete.weight);
+                    if (otherEdge) {
+                        edges = edges.filter(e => e.id !== otherEdge.id);
+                    }
+                }
+                
+                // *** NEW LOGIC: Flatten any remaining partner ***
+                // If the deleted edge was directed, check for a reverse partner.
+                if (edgeToDelete.directed) {
+                    const reversePartner = edges.find(e => e.from === toId && e.to === fromId && e.directed);
+                    
+                    // If that partner exists (and was arced), flatten it.
+                    if (reversePartner) {
+                        reversePartner.arc = 0;
+                    }
+                }
+                // *** END NEW LOGIC ***
+                
+                logStatus(`Edge ${fromNode?.name || '?'} ${edgeToDelete.directed ? '→' : '↔'} ${toNode?.name || '?'} deleted.`, "info");
+
+                selectedEdgeId = null;
+                resetAlgorithm();
+                drawGraph();
+            });
+
+
+            clearGraphBtn.addEventListener('click', () => {
+                nodes = [];
+                edges = [];
+                nextNodeId = 0;
+                nextNodeChar = 'A';
+                selectedNodeId = null;
+                selectedEdgeId = null;
+                updateNodeDropdowns();
+                resetAlgorithm();
+                logStatus("Graph cleared. Add new nodes and edges.", "info");
+                drawGraph();
+            });
+
+            tabs.forEach(tab => {
+                tab.btn.addEventListener('click', () => {
+                    tabs.forEach(t => {
+                        t.btn.classList.remove('active');
+                        t.content.classList.remove('active');
+                    });
+                    tab.btn.classList.add('active');
+                    tab.content.classList.add('active');
+                });
+            });
+
+            function logStatus(message, type = "default") {
+                if (statusLog.children.length === 1 && statusLog.children[0].textContent === "Waiting for algorithm to start...") {
+                    statusLog.innerHTML = '';
+                }
+                const p = document.createElement('p');
+                let colorClass = "text-slate-300";
+                if (type === "info") colorClass = "text-blue-400";
+                if (type === "success") colorClass = "text-green-400 font-medium";
+                if (type === "error") colorClass = "text-red-400 font-medium";
+                if (type === "warn") colorClass = "text-amber-400 font-medium";
+                
+                p.className = `pb-1 ${colorClass}`;
+                p.textContent = message;
+                statusLog.appendChild(p);
+                statusLog.scrollTop = statusLog.scrollHeight;
+            }
+
+            function resetAlgorithm() {
+                selectedNodeId = null;
+                selectedEdgeId = null;
+                bellmanState = {
+                    initialized: false,
+                    distances: {},
+                    predecessors: {},
+                    sourceNodeId: null,
+                    iteration: 0,
+                    edgeIndex: 0,
+                    phase: 'relax',
+                    animationQueue: [],
+                    highlightedPath: null
+                };
+                nextStepBtn.disabled = true;
+                initBtn.disabled = false;
+                runBtn.disabled = false;
+                downloadBtn.disabled = true;
+                sourceNodeSelect.disabled = false;
+                resultsTableBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center">Run the algorithm to see results.</td></tr>';
+                logStatus("Algorithm reset. Select a source node and initialize.", "info");
+                drawGraph();
+            }
+            resetBtn.addEventListener('click', resetAlgorithm);
+            
+            initBtn.addEventListener('click', () => {
+                const sourceId = parseInt(sourceNodeSelect.value);
+                if (isNaN(sourceId)) {
+                    logStatus("Please select a valid source node.", "error");
+                    return;
+                }
+                
+                resetAlgorithm();
+                bellmanState.initialized = true;
+                bellmanState.sourceNodeId = sourceId;
+                
+                nodes.forEach(node => {
+                    bellmanState.distances[node.id] = Infinity;
+                    bellmanState.predecessors[node.id] = null;
+                });
+                bellmanState.distances[sourceId] = 0;
+                
+                bellmanState.iteration = 1;
+                bellmanState.edgeIndex = 0;
+                bellmanState.phase = 'relax';
+                downloadBtn.disabled = true;
+
+                logStatus(`Algorithm Initialized. Source: ${nodes.find(n => n.id === sourceId).name}`, "success");
+                logStatus(`Distances set to ∞, Source distance set to 0.`);
+                logStatus(`Ready for Iteration ${bellmanState.iteration} (Relaxing all edges).`, "info");
+                
+                nextStepBtn.disabled = false;
+                initBtn.disabled = true;
+                sourceNodeSelect.disabled = true;
+
+                startAnimationLoop();
+                drawGraph();
+            });
+
+            nextStepBtn.addEventListener('click', () => {
+                if (!bellmanState.initialized) {
+                    logStatus("Please initialize the algorithm first.", "error");
+                    return;
+                }
+                
+                performStep();
+            });
+
+            runBtn.addEventListener('click', () => {
+                if (!bellmanState.initialized) {
+                    const sourceId = parseInt(sourceNodeSelect.value);
+                    if (isNaN(sourceId)) {
+                        logStatus("Please select a valid source node.", "error");
+                        return;
+                    }
+                    initBtn.click();
+                }
+
+                while (bellmanState.phase === 'relax') {
+                    performStep(false); 
+                }
+                
+                while (bellmanState.phase === 'check') {
+                    performStep(false); 
+                }
+                
+                nextStepBtn.disabled = true;
+                runBtn.disabled = true;
+            });
+
+            function performStep(animate = true) {
+                if (bellmanState.phase === 'relax') {
+                    performRelaxationStep(animate);
+                } else if (bellmanState.phase === 'check') {
+                    performNegativeCycleCheckStep(animate);
+                } else {
+                    nextStepBtn.disabled = true;
+                }
+            }
+
+            function performRelaxationStep(animate = true) {
+                if (nodes.length === 0) {
+                     bellmanState.phase = 'done';
+                     logStatus("No nodes in graph. Algorithm stopped.", "warn");
+                     nextStepBtn.disabled = true;
+                     downloadBtn.disabled = false;
+                     return;
+                }
+                if (bellmanState.iteration > nodes.length - 1) {
+                    bellmanState.phase = 'check';
+                    bellmanState.edgeIndex = 0;
+                    logStatus(`Completed ${nodes.length - 1} iterations.`, "success");
+                    logStatus(`Phase 2: Checking for negative-weight cycles...`, "info");
+                    performNegativeCycleCheckStep(animate);
+                    return;
+                }
+
+                if (edges.length === 0) {
+                     bellmanState.phase = 'check';
+                     bellmanState.edgeIndex = 0;
+                     logStatus(`No edges to relax. Skipping to negative cycle check.`, "info");
+                     performNegativeCycleCheckStep(animate);
+                     return;
+                }
+
+                if (bellmanState.edgeIndex >= edges.length) {
+                    bellmanState.edgeIndex = 0;
+                    bellmanState.iteration++;
+                    if (bellmanState.iteration > nodes.length - 1) {
+                        performRelaxationStep(animate); 
+                        return;
+                    }
+                    logStatus(`--- End of Iteration ${bellmanState.iteration - 1} ---`, "info");
+                    logStatus(`Ready for Iteration ${bellmanState.iteration} (Relaxing all edges).`, "info");
+                    return; 
+                }
+                
+                const edge = edges[bellmanState.edgeIndex];
+                const fromNode = nodes.find(n => n.id === edge.from);
+                const toNode = nodes.find(n => n.id === edge.to);
+                
+                if (!fromNode || !toNode) {
+                    bellmanState.edgeIndex++;
+                    if(bellmanState.edgeIndex >= edges.length) { 
+                        performRelaxationStep(animate);
+                    }
+                    return;
+                }
+
+                const newDist = bellmanState.distances[edge.from] + edge.weight;
+                
+                let logMsg = `Iter[${bellmanState.iteration}/${nodes.length - 1}], Edge(${fromNode.name}→${toNode.name}): `;
+                let relaxed = false;
+
+                if (bellmanState.distances[edge.from] !== Infinity && newDist < bellmanState.distances[edge.to]) {
+                    bellmanState.distances[edge.to] = newDist;
+                    bellmanState.predecessors[edge.to] = edge.from;
+                    relaxed = true;
+                    logMsg += `Relaxed! New dist(${toNode.name}) = ${newDist}`;
+                    logStatus(logMsg, "success");
+                } else {
+                    logMsg += `No change. (dist[${fromNode.name}](${bellmanState.distances[edge.from] === Infinity ? '∞' : bellmanState.distances[edge.from]}) + w(${edge.weight}) = ${bellmanState.distances[edge.from] === Infinity ? '∞' : newDist}) >= dist[${toNode.name}](${bellmanState.distances[edge.to]})`;
+                    logStatus(logMsg);
+                }
+
+                if(animate) {
+                    bellmanState.animationQueue.push({ edge: edge.id, relaxed: relaxed ? edge.id : null });
+                }
+
+                bellmanState.edgeIndex++;
+                
+                if (!animate) {
+                    drawGraph();
+                }
+            }
+            
+            function performNegativeCycleCheckStep(animate = true) {
+                 if (nodes.length === 0) {
+                     bellmanState.phase = 'done';
+                     logStatus("No nodes in graph. Algorithm stopped.", "warn");
+                     nextStepBtn.disabled = true;
+                     downloadBtn.disabled = false;
+                     return;
+                }
+                if (edges.length === 0) {
+                     bellmanState.phase = 'done';
+                     logStatus("No edges. Algorithm complete. No negative cycles found.", "success");
+                     nextStepBtn.disabled = true;
+                     downloadBtn.disabled = false;
+                     updateResultsTable();
+                     return;
+                }
+
+                if (bellmanState.edgeIndex >= edges.length) {
+                    bellmanState.phase = 'done';
+                    logStatus("Algorithm complete. No negative cycles found.", "success");
+                    nextStepBtn.disabled = true;
+                    runBtn.disabled = true;
+                    downloadBtn.disabled = false;
+                    updateResultsTable();
+                    drawGraph();
+                    return;
+                }
+                
+                const edge = edges[bellmanState.edgeIndex];
+                const fromNode = nodes.find(n => n.id === edge.from);
+                const toNode = nodes.find(n => n.id === edge.to);
+                
+                if (!fromNode || !toNode) {
+                    bellmanState.edgeIndex++;
+                    if(bellmanState.edgeIndex >= edges.length) { 
+                         performNegativeCycleCheckStep(animate);
+                    }
+                    return;
+                }
+
+                let logMsg = `Check(${fromNode.name}→${toNode.name}): `;
+
+                if (bellmanState.distances[edge.from] !== Infinity && bellmanState.distances[edge.from] + edge.weight < bellmanState.distances[edge.to]) {
+                    logStatus(`!!! NEGATIVE CYCLE DETECTED involving edge ${fromNode.name}→${toNode.name} !!!`, "error");
+                    
+                    let cycleNode = edge.to;
+                    for(let i = 0; i < nodes.length; i++) {
+                        if (cycleNode === undefined || bellmanState.predecessors[cycleNode] === null) break;
+                        cycleNode = bellmanState.predecessors[cycleNode];
+                    }
+                    
+                    let curr = cycleNode;
+                    let cyclePath = [];
+                    while(curr !== undefined && curr !== null) {
+                        cyclePath.push(curr);
+                        if(bellmanState.predecessors[curr] === undefined || bellmanState.predecessors[curr] === null) break;
+                        curr = bellmanState.predecessors[curr];
+                        if (curr === cycleNode) break; 
+                        if (cyclePath.length > nodes.length) break; 
+                    }
+                    
+                    if(curr === cycleNode) {
+                        cyclePath.push(curr);
+                        cyclePath.reverse();
+                    } else {
+                        cyclePath = [edge.from, edge.to];
+                    }
+                    
+                    
+                    const cycleNodeNames = cyclePath.map(id => {
+                        const n = nodes.find(n => n.id === id);
+                        return n ? n.name : '?';
+                    }).join(' → ');
+
+                    logStatus(`Cycle path (approx): ${cycleNodeNames}`, "error");
+
+                    bellmanState.phase = 'done';
+                    nextStepBtn.disabled = true;
+                    runBtn.disabled = true;
+                    downloadBtn.disabled = false;
+                    
+                    detectNegativeCycles(); 
+                    
+                } else {
+                     logMsg += "OK.";
+                     logStatus(logMsg);
+                }
+                
+                if(animate) {
+                    bellmanState.animationQueue.push({ edge: edge.id, relaxed: null });
+                }
+
+                bellmanState.edgeIndex++;
+                
+                if (!animate) {
+                    drawGraph();
+                }
+            }
+            
+            function detectNegativeCycles() {
+                for(let i = 0; i < nodes.length; i++) {
+                    for(const edge of edges) {
+                         if (bellmanState.distances[edge.from] === -Infinity) {
+                            bellmanState.distances[edge.to] = -Infinity;
+                        }
+                        if (bellmanState.distances[edge.from] !== Infinity && bellmanState.distances[edge.from] + edge.weight < bellmanState.distances[edge.to]) {
+                            bellmanState.distances[edge.to] = -Infinity;
+                        }
+                    }
+                }
+                updateResultsTable();
+            }
+
+            function updateResultsTable() {
+                resultsTableBody.innerHTML = '';
+                if (nodes.length === 0) {
+                     resultsTableBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center">Graph is empty.</td></tr>';
+                     return;
+                }
+                nodes.forEach(node => {
+                    const row = document.createElement('tr');
+                    row.className = "hover:bg-slate-700 cursor-pointer";
+                    
+                    const path = getPath(node.id);
+                    let pathString = 'Unreachable';
+                    if (bellmanState.distances[node.id] === -Infinity) {
+                        pathString = 'Negative Cycle';
+                    } else if (node.id === bellmanState.sourceNodeId) {
+                        pathString = node.name;
+                    } else if (path) {
+                        pathString = path.map(id => nodes.find(n => n.id === id).name).join(' → ');
+                    }
+                    
+                    let distText = bellmanState.distances[node.id];
+                    if (distText === Infinity) distText = '∞';
+                    if (distText === -Infinity) distText = '-∞';
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-200">${node.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${distText}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">${pathString}</td>
+                    `;
+                    
+                    row.addEventListener('mouseenter', () => highlightPath(node.id));
+                    row.addEventListener('mouseleave', () => {
+                        bellmanState.highlightedPath = null;
+                        drawGraph();
+                    });
+
+                    resultsTableBody.appendChild(row);
+                });
+                
+                tabs.find(t => t.btn.id === 'tab-results').btn.click();
+            }
+
+            function getPath(targetNodeId) {
+                const path = [];
+                let curr = targetNodeId;
+                const predecessors = bellmanState.predecessors;
+                const sourceId = bellmanState.sourceNodeId;
+
+                if (bellmanState.distances[targetNodeId] === Infinity || bellmanState.distances[targetNodeId] === -Infinity) {
+                    return null; 
+                }
+
+                while (curr !== null && curr !== undefined) {
+                    if (path.includes(curr)) { 
+                        path.unshift(curr);
+                        return path; 
+                    }
+                    path.unshift(curr);
+                    if (curr === sourceId) break;
+                    curr = predecessors[curr];
+                }
+                
+                return (path[0] === sourceId) ? path : null;
+            }
+            
+            function highlightPath(targetNodeId) {
+                const pathNodeIds = getPath(targetNodeId);
+                if (!pathNodeIds) {
+                    bellmanState.highlightedPath = null;
+                    drawGraph();
+                    return;
+                }
+                
+                const pathEdgeIds = [];
+                for (let i = 0; i < pathNodeIds.length - 1; i++) {
+                    const fromId = pathNodeIds[i];
+                    const toId = pathNodeIds[i+1];
+                    // Find the exact edge that forms the path
+                    const pathEdge = edges.find(e => e.from === fromId && e.to === toId && bellmanState.predecessors[toId] === fromId);
+                    
+                    if (pathEdge) {
+                        pathEdgeIds.push(pathEdge.id);
+                    } else {
+                        // Fallback for undirected paths (less precise)
+                        const edge = edges.find(e => (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId));
+                        if(edge) pathEdgeIds.push(edge.id);
+                    }
+                }
+                
+                bellmanState.highlightedPath = {
+                    nodes: pathNodeIds,
+                    edges: pathEdgeIds
+                };
+                drawGraph();
+            }
+
+            function startAnimationLoop() {
+                function animate() {
+                    if (bellmanState.animationQueue.length > 0) {
+                        drawGraph(); 
+                        bellmanState.animationQueue.shift(); 
+                    }
+                    requestAnimationFrame(animate);
+                }
+                animate();
+            }
+            
+            function downloadReport() {
+                if (bellmanState.phase !== 'done') {
+                    logStatus("Please run the simulation to completion before downloading.", "error");
+                    return;
+                }
+                
+                const sourceNodeName = nodes.find(n => n.id === bellmanState.sourceNodeId)?.name || 'N/A';
+                const nodeData = nodes.map(n => n.name).join(', ');
+                
+                const edgeData = edges
+                    .filter(e => e.directed || e.from < e.to) // Show undirected edges only once
+                    .map(edge => {
+                        const from = nodes.find(n => n.id === edge.from)?.name || '?';
+                        const to = nodes.find(n => n.id === edge.to)?.name || '?';
+                        const arrow = edge.directed ? '→' : '↔';
+                        return `<li>${from} ${arrow} ${to} (Weight: ${edge.weight})</li>`;
+                    }).join('');
+
+                const logData = statusLog.innerHTML;
+                const resultsData = document.getElementById('content-results').querySelector('table').outerHTML;
+                
+                const styles = `
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+                        h1 { color: #0891b2; border-bottom: 2px solid #0891b2; padding-bottom: 5px; }
+                        h2 { color: #0e7490; border-bottom: 1px solid #334155; padding-bottom: 3px; margin-top: 30px;}
+                        h3 { color: #155e75; }
+                        p, li { font-size: 14px; }
+                        strong { color: #0f172a; }
+                        ul { padding-left: 20px; }
+                        .log-container { 
+                            background-color: #f8f8f8; 
+                            border: 1px solid #ddd; 
+                            padding: 10px; 
+                            font-family: 'Courier New', monospace; 
+                            font-size: 12px; 
+                            max-height: 500px; 
+                            overflow-y: auto; 
+                            white-space: pre-wrap;
+                        }
+                        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+                        th, td { border: 1px solid #94a3b8; padding: 8px; text-align: left; }
+                        th { background-color: #e2e8f0; color: #1e293b; }
+                        tr:nth-child(even) { background-color: #f1f5f9; }
+                    </style>
+                `;
+
+                let htmlContent = `
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>Bellman-Ford Simulation Report</title>
+                        ${styles}
+                    </head>
+                    <body>
+                        <h1>Bellman-Ford Simulation Report</h1>
+                        
+                        <h2>Inputs</h2>
+                        <p><strong>Source Node:</strong> ${sourceNodeName}</p>
+                        <p><strong>All Nodes:</strong> ${nodeData}</p>
+                        <h3>Edges</h3>
+                        <ul>
+                            ${edgeData}
+                        </ul>
+                        
+                        <h2>Detailed Step-by-Step Log</h2>
+                        <div class="log-container">
+                            ${logData}
+                        </div>
+                        
+                        <h2>Final Results</h2>
+                        ${resultsData}
+                    </body>
+                    </html>
+                `;
+
+                const blob = new Blob([htmlContent], { type: 'application/msword' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'bellman-ford-report.doc';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+            }
+            
+            downloadBtn.addEventListener('click', downloadReport);
+
+
+            drawGraph();
+            updateNodeDropdowns();
+            logStatus("Welcome! Click canvas to add node. Click 'Help' for more instructions.", "info");
+            
+            // --- Modal Logic ---
+            const helpBtn = document.getElementById('helpBtn');
+            const learnBtn = document.getElementById('learnBtn');
+            const developerBtn = document.getElementById('developerBtn');
+            
+            const modalOverlay = document.getElementById('modalOverlay');
+            const helpModal = document.getElementById('helpModal');
+            const learnModal = document.getElementById('learnModal');
+            const developerModal = document.getElementById('developerModal');
+            
+            const allModals = [helpModal, learnModal, developerModal];
+            const allModalCloseBtns = document.querySelectorAll('.modal-close-btn');
+
+            function openModal(modal) {
+                allModals.forEach(m => m.classList.add('hidden')); // Close any open modals
+                modal.classList.remove('hidden');
+                modalOverlay.classList.remove('hidden');
+            }
+
+            function closeModal() {
+                allModals.forEach(m => m.classList.add('hidden'));
+                modalOverlay.classList.add('hidden');
+                
+                // Stop YouTube video when modal closes
+                
+            }
+
+            helpBtn.addEventListener('click', () => openModal(helpModal));
+            learnBtn.addEventListener('click', () => openModal(learnModal));
+            developerBtn.addEventListener('click', () => openModal(developerModal));
+
+            allModalCloseBtns.forEach(btn => {
+                btn.addEventListener('click', closeModal);
+            });
+            
+            modalOverlay.addEventListener('click', closeModal);
+        });
+    </script>
+</body>
+</html>
